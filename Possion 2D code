@@ -1,0 +1,112 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Oct 16 23:42:26 2022
+@author: yunguan ye
+Comment: No algorithm was employed, the essence of the problem is：
+        solving a system of linear equations accommodated in matrix form.
+        While the computing time is less than 4 seconds.        
+"""
+import time
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy.sparse as sp                 
+from scipy.sparse.linalg import spsolve
+
+# constructing the Laplacian
+def Laplacian(Nx,Ny):
+    # simple way of genetating a sparse matrix
+    a=-2*np.ones(Nx-2)
+    b=np.append(a, np.array([1,1])/2)
+    c=[]
+    for j in range(Ny-3):
+        c=np.append(c, b)
+    c=np.append(c, a)
+    d=np.concatenate([np.ones(Nx+1)/2, c,np.ones(Nx+1)/2])
+    d=np.diag(d,k=0)
+    Lx=d.copy()
+    Ly=d.copy()
+    l=np.where(d==a[0])
+    l=l[0]
+    for i in l:
+        Lx[i][i-1]=1
+        Lx[i][i+1]=1
+        Ly[i][i-Nx]=1
+        Ly[i][i+Nx]=1
+    for i in l:
+        Lx[i,:]=Lx[i,:]/dx**2
+        Ly[i,:]=Ly[i,:]/dy**2
+    La=sp.csr_matrix((Lx+Ly))
+    return La
+   
+# The rectangle region and discretization
+L=2  #length
+W=1  #width
+Nx=100  #No. of points along the x axis
+Ny=100 #No. of points along the y axis
+x=np.linspace(0, L,Nx)
+y=np.linspace(0, W,Ny)
+dx=x[1]-x[0]
+dy=y[1]-y[0]
+
+# Record the location indices of each point
+g = np.zeros(Nx*Ny) 
+X,Y = np.meshgrid(x,y)          # 2D meshgrid
+Xu = X.ravel()                  # Unravel 2D meshgrid to 1D array
+Yu = Y.ravel()
+
+# Boundary indices generation
+start_time = time.time()
+ind_unravel_L = np.squeeze(np.where(Xu==x[0]))          # Left boundary
+ind_unravel_R = np.squeeze(np.where(Xu==x[Nx-1]))       # Right boundary
+ind_unravel_B = np.squeeze(np.where(Yu==y[0]))          # Bottom boundary
+ind_unravel_T = np.squeeze(np.where(Yu==y[Ny-1]))       # Top boundary
+
+ind_boundary_unravel = np.squeeze(np.where((Xu==x[0]) | (Xu==x[Nx-1]) | (Yu==y[0]) | (Yu==y[Ny-1])))  # All boundary
+ind_boundary = np.where((X==x[0]) | (X==x[Nx-1]) | (Y==y[0]) | (Y==y[Ny-1]))    # All boundary
+
+# set source(charge) distribution
+rc=np.array([L/2,W/2])
+rho0=1
+epsion0=8.85e-12
+rho=np.zeros((Nx,Ny))
+for i in range(1,Nx-1):
+    for j in range(1,Ny-1):
+        D=(X[i][j]-rc[0])**2+(Y[i][j]-rc[1])**2
+        rho[i][j]=rho0*np.exp(-20*D/W**2)        
+rho_unravel=rho.reshape(Ny*Nx,1)
+rho_ravel=rho_unravel.ravel()
+
+# set Dirichlet boundary conditions
+uL = 0
+uR = 1
+uT = x/2
+uB = x/2
+
+# Construction of right hand vector b(function of x and y)
+b = g
+b[ind_unravel_L] = uL
+b[ind_unravel_R] = uR
+b[ind_unravel_T] = uT
+b[ind_unravel_B] = uB
+
+# Solve the matrix equation of Lx=rho+b
+start_time = time.time()
+La=Laplacian(Nx,Ny)
+u = spsolve(La,b+rho_ravel/(-epsion0)).reshape(Ny,Nx)
+print("sp_solve() time = %1.6s" % (time.time()-start_time))
+Laa=La.toarray()
+# Start to draw the picture for visulization
+r=r'$\nabla^2 u = \rho_0\mathrm{e}^{-20|\vec{r}-\vec{r_c}|^2/W^2}$' # r=r'$\nabla^2 u = 0$'   
+    #draw 3D
+plt.figure(1)
+ax=plt.axes(projection='3d')
+ax.plot_surface(X,Y,u,cmap='viridis',edgecolor='none')
+ax.set_xlabel('x');ax.set_ylabel('y');ax.set_zlabel('u')
+ax.set_title(r)
+plt.savefig('potential 3d',dpi=300)
+    #draw 2D
+plt.figure(2)
+plt.contourf(X,Y,u, 41, cmap='inferno')
+plt.colorbar()
+plt.xlabel('x');plt.ylabel('y');plt.title(r)
+plt.savefig('potential 2d',dpi=300)
